@@ -3,86 +3,28 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-REPO="Pumpkin-MC/Pumpkin"
+# The direct URL you provided
+DOWNLOAD_URL="https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
 PUMPKIN_DIR="$HOME/pumpkinmc_server"
 BIN_DIR="/usr/local/bin"
 
 echo "====================================================="
-echo " PumpkinMC Installer for Arch Linux (Final Fix)"
+echo " PumpkinMC Installer for Arch Linux (Direct Version)"
 echo "====================================================="
 
-echo "=> Installing required dependencies (curl, jq, tmux, wget, unzip, tar)..."
-sudo pacman -Syu --needed curl jq tmux wget unzip tar --noconfirm
+echo "=> Installing required dependencies (tmux, wget)..."
+sudo pacman -Syu --needed tmux wget --noconfirm
 
-echo "=> Fetching the latest release metadata from GitHub..."
-API_RESPONSE=$(curl -s "https://api.github.com/repos/$REPO/releases")
-
-# Безопасный парсинг JSON, который не падает, если список пуст
-DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '
-    [ .[]? | select(.assets != null) ] | .[0]?.assets[]? | 
-    select(.name | test("linux.*x86_64|x86_64.*linux|linux.*amd64|amd64.*linux|linux"; "i")) | 
-    select(.name | test("arm|aarch64") | not) | 
-    .browser_download_url
-' | head -n 1)
-
-# Fallback: берем любой первый файл из последнего релиза
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-    DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.[0]?.assets[0]?.browser_download_url // empty')
-fi
-
-# Fallback 2: если API GitHub вообще пустой, скачиваем напрямую Nightly build из GitHub Actions
-if [ -z "$DOWNLOAD_URL" ] ||[ "$DOWNLOAD_URL" == "null" ]; then
-    echo "=> GitHub releases are empty. Using alternative Nightly build link..."
-    DOWNLOAD_URL="https://nightly.link/Pumpkin-MC/Pumpkin/workflows/build/master/pumpkin-linux.zip"
-fi
-
-echo "=> Found release asset: $DOWNLOAD_URL"
-
+echo "=> Setting up server directory at $PUMPKIN_DIR..."
 mkdir -p "$PUMPKIN_DIR"
 cd "$PUMPKIN_DIR"
 
-# Определяем имя файла
-FILE_NAME=$(basename "$DOWNLOAD_URL" | cut -d? -f1)
-if [ -z "$FILE_NAME" ] || [ "$FILE_NAME" == "null" ]; then
-    FILE_NAME="pumpkin-release.zip"
-fi
+echo "=> Downloading the PumpkinMC binary..."
+# Download directly and name it 'pumpkin-server'
+wget -q --show-progress -O pumpkin-server "$DOWNLOAD_URL"
 
-echo "=> Downloading $FILE_NAME..."
-wget -q --show-progress -O "$FILE_NAME" "$DOWNLOAD_URL"
-
-echo "=> Extracting/Setting up the executable..."
-if [[ "$FILE_NAME" == *.zip ]]; then
-    unzip -o "$FILE_NAME"
-    rm "$FILE_NAME"
-elif [[ "$FILE_NAME" == *.tar.gz ]]; then
-    tar -xzf "$FILE_NAME"
-    rm "$FILE_NAME"
-fi
-
-# Делаем исполняемыми все распакованные файлы в папке
-find . -maxdepth 1 -type f -exec chmod +x {} + 2>/dev/null || true
-
-# Ищем исполняемый файл (желательно со словом pumpkin в названии)
-EXECUTABLE=$(find . -maxdepth 1 -type f -executable -name "*pumpkin*" | head -n 1)
-
-# Если не нашли по имени, берем любой
-if[ -z "$EXECUTABLE" ]; then
-    EXECUTABLE=$(find . -maxdepth 1 -type f -executable | head -n 1)
-fi
-
-# ПРОБЕЛЫ ТЕПЕРЬ СТОЯТ ПРАВИЛЬНО
-if [ -z "$EXECUTABLE" ] || [ ! -f "$EXECUTABLE" ]; then
-    EXECUTABLE="./pumpkin"
-    chmod +x "$EXECUTABLE" 2>/dev/null || true
-fi
-
-# Переименовываем бинарник для красоты и стабильности
-if[ -f "$EXECUTABLE" ] && [ "$EXECUTABLE" != "./pumpkin-server" ]; then
-    mv "$EXECUTABLE" ./pumpkin-server
-fi
-EXECUTABLE="./pumpkin-server"
-
-echo "=> Server executable is ready at $PUMPKIN_DIR/pumpkin-server"
+echo "=> Making the binary executable..."
+chmod +x pumpkin-server
 
 echo "=> Creating the 'pumpkinmc' command wrapper..."
 
@@ -154,6 +96,7 @@ EOF
 
 chmod +x "$WRAPPER_SCRIPT"
 
+# Inject the actual directory path into the wrapper script
 sed -i "s|PUMPKIN_DIR_PLACEHOLDER|$PUMPKIN_DIR|g" "$WRAPPER_SCRIPT"
 
 echo "=> Moving wrapper to $BIN_DIR/pumpkinmc (requires sudo)..."
@@ -162,6 +105,9 @@ sudo mv "$WRAPPER_SCRIPT" "$BIN_DIR/pumpkinmc"
 echo ""
 echo "====================================================="
 echo " Installation Complete!"
+echo "====================================================="
+echo " Directory: $PUMPKIN_DIR"
+echo " Command:   pumpkinmc"
 echo "====================================================="
 echo "=> Starting the server for the first time..."
 pumpkinmc run
