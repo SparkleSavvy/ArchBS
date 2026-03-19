@@ -8,30 +8,30 @@ PUMPKIN_DIR="$HOME/pumpkinmc_server"
 BIN_DIR="/usr/local/bin"
 
 echo "====================================================="
-echo " PumpkinMC Installer for Arch Linux"
+echo " PumpkinMC Installer for Arch Linux (Fixed)"
 echo "====================================================="
 
 echo "=> Installing required dependencies (curl, jq, tmux, wget, unzip, tar)..."
-# Using sudo to install packages. You will be prompted for your password.
 sudo pacman -Syu --needed curl jq tmux wget unzip tar --noconfirm
 
 echo "=> Fetching the latest release metadata from GitHub..."
-API_RESPONSE=$(curl -s "https://api.github.com/repos/$REPO/releases/latest")
+# ИСПОЛЬЗУЕМ /releases вместо /releases/latest, чтобы видеть pre-releases (ранние сборки)
+API_RESPONSE=$(curl -s "https://api.github.com/repos/$REPO/releases")
 
-# Parse the download URL for a Linux binary.
-# We prioritize x86_64/amd64 Linux builds.
+# Берем самый первый релиз в списке (индекс [0]) и ищем Linux-билд
 DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '
-    .assets[] | 
+    .[0].assets[]? | 
     select(.name | test("linux.*x86_64|x86_64.*linux|linux.*amd64|amd64.*linux|linux"; "i")) | 
     select(.name | test("arm|aarch64") | not) | 
     .browser_download_url
 ' | head -n 1)
 
-# Fallback if no specific linux binary matched, pick the first available asset
-if[ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-    DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[0].browser_download_url')
+# Fallback: если конкретно linux-файла нет, берём первый попавшийся файл из самого нового релиза
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
+    DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.[0].assets[0]?.browser_download_url // empty')
 fi
 
+# Проверка, нашли ли мы хоть что-то
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
     echo "Error: No compiled release assets found for $REPO."
     echo "The project might not have pre-compiled binaries available at the moment."
@@ -63,7 +63,7 @@ else
 fi
 
 # Fallback if find fails to locate the executable
-if [ -z "$EXECUTABLE" ] || [ ! -f "$EXECUTABLE" ]; then
+if[ -z "$EXECUTABLE" ] || [ ! -f "$EXECUTABLE" ]; then
     EXECUTABLE="./pumpkin"
     chmod +x "$EXECUTABLE" 2>/dev/null || true
 fi
