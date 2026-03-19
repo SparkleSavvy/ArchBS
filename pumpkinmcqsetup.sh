@@ -43,7 +43,7 @@ cd "$PUMPKIN_DIR"
 
 # Определяем имя файла
 FILE_NAME=$(basename "$DOWNLOAD_URL" | cut -d? -f1)
-if[ -z "$FILE_NAME" ] || [ "$FILE_NAME" == "null" ]; then
+if [ -z "$FILE_NAME" ] || [ "$FILE_NAME" == "null" ]; then
     FILE_NAME="pumpkin-release.zip"
 fi
 
